@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VyOS Config Viewer</title>
+  <title>VyOS VPN Tools</title>
   <link rel="stylesheet" href="/static/style.css">
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,7 +25,7 @@
         <line x1="8" y1="21" x2="16" y2="21"></line>
         <line x1="12" y1="17" x2="12" y2="21"></line>
       </svg>
-      VyOS Viewer
+      VyOS VPN Tools
     </div>
 
     <div class="header-controls">
@@ -50,14 +50,13 @@
           <polyline points="7 10 12 15 17 10"></polyline>
           <line x1="12" y1="15" x2="12" y2="3"></line>
         </svg>
-        Upload JSON
+        Upload Commands
       </button>
-      <input type="file" id="fileInput" accept="application/json" style="display:none">
+      <input type="file" id="fileInput" accept=".txt,.json" style="display:none">
     </div>
   </header>
 
   <main class="main-container">
-    <nav id="menu" class="card flex gap-2" style="padding: 1rem; overflow-x: auto;"></nav>
     <div id="content"></div>
   </main>
 
