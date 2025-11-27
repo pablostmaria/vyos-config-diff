@@ -19,15 +19,26 @@ def get_ipsec_mode(ssh):
     Returns: "Enrutado (VTI)" or "Políticas"
     """
     try:
-        stdin, stdout, stderr = ssh.exec_command("show interfaces")
+        # Use a more specific command to check for VTI interfaces
+        stdin, stdout, stderr = ssh.exec_command("show interfaces vti")
         data = stdout.read().decode('utf-8', errors='ignore')
         
-        if "vti1" in data:
+        # If the command returns interface details (not an error), VTI exists
+        if "vti" in data.lower() and ("up" in data.lower() or "down" in data.lower()):
             return "Enrutado (VTI)"
         else:
             return "Políticas"
     except Exception as e:
-        return f"Error: {str(e)}"
+        # If command fails, try alternative method
+        try:
+            stdin, stdout, stderr = ssh.exec_command("show interfaces")
+            data = stdout.read().decode('utf-8', errors='ignore')
+            if "vti" in data.lower():
+                return "Enrutado (VTI)"
+            else:
+                return "Políticas"
+        except:
+            return "Políticas"
 
 def get_ipsec_sa(ssh):
     """
@@ -38,14 +49,26 @@ def get_ipsec_sa(ssh):
         stdin, stdout, stderr = ssh.exec_command("show vpn ipsec sa")
         raw = stdout.read().decode('utf-8', errors='ignore')
         
-        lines = [l for l in raw.splitlines() if l.strip() and not l.startswith('-')]
+        # Split into lines and filter
+        lines = raw.splitlines()
+        lines = [l.strip() for l in lines if l.strip() and not l.strip().startswith('-')]
+        
+        # Debug: print raw output (will appear in server logs)
+        print(f"DEBUG: Raw SA output:\n{raw}")
+        print(f"DEBUG: Filtered lines: {len(lines)}")
         
         if len(lines) < 2:
             return []
         
         entries = []
-        for line in lines[1:]:  # Skip header line
-            parts = re.split(r'\s{2,}', line.strip())
+        # Skip the first line (header)
+        for line in lines[1:]:
+            # Split by multiple spaces (2 or more)
+            parts = re.split(r'\s{2,}', line)
+            
+            print(f"DEBUG: Line: {line}")
+            print(f"DEBUG: Parts: {parts} (count: {len(parts)})")
+            
             if len(parts) < 7:
                 continue
             
@@ -60,8 +83,10 @@ def get_ipsec_sa(ssh):
                 "proposal": parts[7] if len(parts) > 7 else ""
             })
         
+        print(f"DEBUG: Total entries parsed: {len(entries)}")
         return entries
     except Exception as e:
+        print(f"ERROR in get_ipsec_sa: {str(e)}")
         return []
 
 @app.route('/fetch-config', methods=['POST'])
