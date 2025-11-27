@@ -3,8 +3,6 @@
 
 console.log('VyOS VPN Tools JS loaded');
 
-const uploadBtn = document.getElementById('uploadBtn');
-const fileInput = document.getElementById('fileInput');
 const content = document.getElementById('content');
 const themeSelect = document.getElementById('themeSelect');
 
@@ -19,99 +17,80 @@ themeSelect.addEventListener('change', (e) => {
   localStorage.setItem('vyos-theme', t);
 });
 
-let VPN_DATA = [];
-
-// ========= CARGA DE FICHERO =========
-uploadBtn.onclick = () => fileInput.click();
-
-fileInput.onchange = async () => {
-  try {
-    const file = fileInput.files[0];
-    if (!file) return;
-    const fd = new FormData(); fd.append('file', file);
-    const res = await fetch('/upload', { method: 'POST', body: fd });
-    const j = await res.json();
-    if (j.status !== 'ok') return alert(j.message);
-    VPN_DATA = j.data;
-    renderIPsecTable(VPN_DATA);
-  } catch (e) { console.error(e); alert('Error uploading file'); }
-};
-
-// ========= RENDER IPSEC TABLE =========
-function renderIPsecTable(data) {
-  if (!data || data.length === 0) {
-    content.innerHTML = '<div class="card"><p>No IPsec configuration found.</p></div>';
+// ========= RENDER IPSEC SA TABLE =========
+function renderIPsecSA(data) {
+  if (!data || !data.mode) {
+    content.innerHTML = '<div class="card"><p>No IPsec data available.</p></div>';
     return;
   }
 
   let html = `
     <div class="card">
-      <div class="flex justify-between items-center mb-4">
-        <h2>IPsec Configuration</h2>
-        <button class="btn" onclick="downloadCommands()">Descargar comandos</button>
-      </div>
+      <h2>IPsec Status</h2>
       <div class="table-container">
         <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Peer</th>
-              <th>Tipo</th>
-              <th>Encryption</th>
-              <th>Hash</th>
-              <th>DH Group</th>
-              <th>Lifetime</th>
-              <th>Detalles</th>
-            </tr>
-          </thead>
           <tbody>
-  `;
-
-  data.forEach(row => {
-    html += `
-      <tr>
-        <td>${row.name}</td>
-        <td>${row.peer}</td>
-        <td>${row.type}</td>
-        <td>${row.encryption}</td>
-        <td>${row.hash}</td>
-        <td>${row.dh_group}</td>
-        <td>${row.lifetime}</td>
-        <td style="white-space: pre-wrap; font-size: 0.85em;">${row.details}</td>
-      </tr>
-    `;
-  });
-
-  html += `
+            <tr>
+              <td><strong>Modo IPsec</strong></td>
+              <td>${data.mode}</td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
   `;
 
+  if (data.sa && data.sa.length > 0) {
+    html += `
+      <div class="card">
+        <h2>Security Associations</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Conexión</th>
+                <th>Estado</th>
+                <th>Uptime</th>
+                <th>Bytes</th>
+                <th>Paquetes</th>
+                <th>Remote Address</th>
+                <th>Remote ID</th>
+                <th>Proposal</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    data.sa.forEach(row => {
+      html += `
+        <tr>
+          <td>${row.connection}</td>
+          <td>${row.state}</td>
+          <td>${row.uptime}</td>
+          <td>${row.bytes}</td>
+          <td>${row.packets}</td>
+          <td>${row.remote_address}</td>
+          <td>${row.remote_id}</td>
+          <td style="font-size: 0.85em;">${row.proposal}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="card">
+        <p>No active Security Associations found.</p>
+      </div>
+    `;
+  }
+
   content.innerHTML = html;
-}
-
-// ========= DOWNLOAD COMMANDS =========
-function downloadCommands() {
-  if (!VPN_DATA || VPN_DATA.length === 0) return alert('No data to download');
-
-  let text = '';
-  VPN_DATA.forEach(row => {
-    if (row.raw_config) {
-      text += row.raw_config + '\n';
-    }
-  });
-
-  const blob = new Blob([text], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'vyos_ipsec_commands.txt';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 // ========= CONNECT MODAL =========
@@ -164,7 +143,7 @@ async function doFetchConfig() {
 
   const btn = document.getElementById('doFetch');
   btn.disabled = true;
-  btn.textContent = 'Cargando configuración IPsec...';
+  btn.textContent = 'Cargando estado IPsec...';
   document.getElementById('fetchError').textContent = '';
 
   try {
@@ -177,8 +156,7 @@ async function doFetchConfig() {
     if (!res.ok) throw new Error(j.error || 'Unknown error');
 
     closeModal();
-    VPN_DATA = j.data;
-    renderIPsecTable(VPN_DATA);
+    renderIPsecSA(j.data);
   }
   catch (e) {
     document.getElementById('fetchError').textContent = e.message;

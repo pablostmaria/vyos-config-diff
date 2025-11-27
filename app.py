@@ -5,38 +5,64 @@ import paramiko
 import threading
 import time
 import socket
-from parser import parse_ipsec_blocks
+import re
 
 app = Flask(__name__)
-
-# Variable global para almacenar la configuración (ahora lista de VPNs)
-VPN_DATA = []
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    # Mantener soporte de upload si el usuario sube un fichero de comandos?
-    # El usuario pidió "Descargar CSV o Descargar comandos", no explícitamente subir.
-    # Pero el botón de upload existe en la UI.
-    # Si suben un JSON, fallará. Si suben texto, podríamos parsearlo.
-    # Por ahora, dejaremos esto como stub o intentaremos parsear si es texto.
-    global VPN_DATA
-    f = request.files.get('file')
-    if not f:
-        return jsonify({'status':'error','message':'No file uploaded'}), 400
+def get_ipsec_mode(ssh):
+    """
+    Detects IPsec mode by checking if VTI interfaces exist.
+    Returns: "Enrutado (VTI)" or "Políticas"
+    """
     try:
-        content = f.read().decode('utf-8', errors='ignore')
-        VPN_DATA = parse_ipsec_blocks(content)
-        return jsonify({'status':'ok', 'data': VPN_DATA})
+        stdin, stdout, stderr = ssh.exec_command("show interfaces")
+        data = stdout.read().decode('utf-8', errors='ignore')
+        
+        if "vti1" in data:
+            return "Enrutado (VTI)"
+        else:
+            return "Políticas"
     except Exception as e:
-        return jsonify({'status':'error','message': str(e)}), 400
+        return f"Error: {str(e)}"
 
-@app.route('/api/ipsec')
-def get_ipsec():
-    return jsonify(VPN_DATA)
+def get_ipsec_sa(ssh):
+    """
+    Parses 'show vpn ipsec sa' output.
+    Returns: List of SA entries
+    """
+    try:
+        stdin, stdout, stderr = ssh.exec_command("show vpn ipsec sa")
+        raw = stdout.read().decode('utf-8', errors='ignore')
+        
+        lines = [l for l in raw.splitlines() if l.strip() and not l.startswith('-')]
+        
+        if len(lines) < 2:
+            return []
+        
+        entries = []
+        for line in lines[1:]:  # Skip header line
+            parts = re.split(r'\s{2,}', line.strip())
+            if len(parts) < 7:
+                continue
+            
+            entries.append({
+                "connection": parts[0],
+                "state": parts[1],
+                "uptime": parts[2],
+                "bytes": parts[3],
+                "packets": parts[4],
+                "remote_address": parts[5],
+                "remote_id": parts[6],
+                "proposal": parts[7] if len(parts) > 7 else ""
+            })
+        
+        return entries
+    except Exception as e:
+        return []
 
 @app.route('/fetch-config', methods=['POST'])
 def fetch_config():
@@ -64,41 +90,21 @@ def fetch_config():
         else:
             ssh.connect(hostname=ip_address, port=port, username=user, timeout=5)
 
-        chan = ssh.invoke_shell()
-        time.sleep(0.5)
-        chan.recv(9999)
-
-        chan.send('configure\n')
-        time.sleep(0.2)
-        # Usamos 'show configuration commands | match vpn' para extraer solo VPN
-        chan.send('run show configuration commands | match vpn\n')
-        time.sleep(0.5)
-        chan.send('exit\n') # exit config mode
-        time.sleep(0.2)
-        chan.send('exit\n') # exit shell
+        # Get IPsec mode
+        mode = get_ipsec_mode(ssh)
         
-        output = b''
-        start_time = time.time()
-        last_recv  = start_time
-        while time.time() - start_time < 30:
-            if chan.recv_ready():
-                chunk = chan.recv(4096)
-                output += chunk
-                last_recv = time.time()
-            else:
-                time.sleep(0.1)
-                if time.time() - last_recv > 2:
-                    break
-
+        # Get IPsec SA information
+        sa_info = get_ipsec_sa(ssh)
+        
         ssh.close()
-
-        text = output.decode('utf-8', errors='ignore')
         
-        # Parsear la salida
-        global VPN_DATA
-        VPN_DATA = parse_ipsec_blocks(text)
-        
-        return jsonify({'status': 'ok', 'data': VPN_DATA})
+        return jsonify({
+            'status': 'ok',
+            'data': {
+                'mode': mode,
+                'sa': sa_info
+            }
+        })
     except paramiko.AuthenticationException:
         return jsonify(error='Autenticación SSH fallida'), 401
     except Exception as e:
@@ -107,4 +113,3 @@ def fetch_config():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5500, debug=False)
-
