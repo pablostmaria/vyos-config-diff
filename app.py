@@ -19,26 +19,36 @@ def get_ipsec_mode(ssh):
     Returns: "Enrutado (VTI)" or "Políticas"
     """
     try:
-        # Use a more specific command to check for VTI interfaces
+        # Method 1: Try to list VTI interfaces specifically
         stdin, stdout, stderr = ssh.exec_command("show interfaces vti")
-        data = stdout.read().decode('utf-8', errors='ignore')
+        stdout_data = stdout.read().decode('utf-8', errors='ignore')
+        stderr_data = stderr.read().decode('utf-8', errors='ignore')
         
-        # If the command returns interface details (not an error), VTI exists
-        if "vti" in data.lower() and ("up" in data.lower() or "down" in data.lower()):
-            return "Enrutado (VTI)"
-        else:
-            return "Políticas"
-    except Exception as e:
-        # If command fails, try alternative method
-        try:
-            stdin, stdout, stderr = ssh.exec_command("show interfaces")
-            data = stdout.read().decode('utf-8', errors='ignore')
-            if "vti" in data.lower():
+        print(f"DEBUG VTI: stdout='{stdout_data[:200]}'")
+        print(f"DEBUG VTI: stderr='{stderr_data[:200]}'")
+        
+        # Check if we got valid interface output (not an error message)
+        if stdout_data and not stderr_data:
+            # Look for interface names like vti0, vti1, etc.
+            if re.search(r'vti\d+', stdout_data, re.IGNORECASE):
+                print("DEBUG VTI: Found VTI interface via 'show interfaces vti'")
                 return "Enrutado (VTI)"
-            else:
-                return "Políticas"
-        except:
-            return "Políticas"
+        
+        # Method 2: Check configuration for VTI
+        stdin, stdout, stderr = ssh.exec_command("show configuration commands | grep 'set interfaces vti'")
+        config_data = stdout.read().decode('utf-8', errors='ignore')
+        print(f"DEBUG VTI Config: '{config_data[:200]}'")
+        
+        if "set interfaces vti" in config_data:
+            print("DEBUG VTI: Found VTI in configuration")
+            return "Enrutado (VTI)"
+        
+        print("DEBUG VTI: No VTI found, returning Políticas")
+        return "Políticas"
+        
+    except Exception as e:
+        print(f"ERROR in get_ipsec_mode: {str(e)}")
+        return "Políticas"
 
 def get_ipsec_sa(ssh):
     """
@@ -49,30 +59,47 @@ def get_ipsec_sa(ssh):
         stdin, stdout, stderr = ssh.exec_command("show vpn ipsec sa")
         raw = stdout.read().decode('utf-8', errors='ignore')
         
-        # Split into lines and filter
+        print(f"DEBUG SA: Raw output length: {len(raw)}")
+        print(f"DEBUG SA: First 500 chars:\n{raw[:500]}")
+        
+        # Split into lines
         lines = raw.splitlines()
-        lines = [l.strip() for l in lines if l.strip() and not l.strip().startswith('-')]
+        print(f"DEBUG SA: Total lines: {len(lines)}")
         
-        # Debug: print raw output (will appear in server logs)
-        print(f"DEBUG: Raw SA output:\n{raw}")
-        print(f"DEBUG: Filtered lines: {len(lines)}")
+        # Filter out empty lines and separator lines
+        filtered_lines = []
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped and not stripped.startswith('-'):
+                filtered_lines.append(stripped)
+                print(f"DEBUG SA: Line {i}: '{stripped}'")
         
-        if len(lines) < 2:
+        print(f"DEBUG SA: Filtered lines count: {len(filtered_lines)}")
+        
+        if len(filtered_lines) < 2:
+            print("DEBUG SA: Not enough lines (need at least header + 1 data row)")
             return []
         
         entries = []
         # Skip the first line (header)
-        for line in lines[1:]:
-            # Split by multiple spaces (2 or more)
-            parts = re.split(r'\s{2,}', line)
+        for i, line in enumerate(filtered_lines[1:], start=1):
+            print(f"DEBUG SA: Processing data line {i}: '{line}'")
             
-            print(f"DEBUG: Line: {line}")
-            print(f"DEBUG: Parts: {parts} (count: {len(parts)})")
+            # Try different splitting strategies
+            # Strategy 1: Split by 2+ spaces
+            parts = re.split(r'\s{2,}', line)
+            print(f"DEBUG SA: Split by 2+ spaces: {parts} (count: {len(parts)})")
+            
+            # If that didn't work well, try single space but be smarter
+            if len(parts) < 7:
+                parts = line.split()
+                print(f"DEBUG SA: Split by single space: {parts} (count: {len(parts)})")
             
             if len(parts) < 7:
+                print(f"DEBUG SA: Skipping line {i} - not enough parts")
                 continue
             
-            entries.append({
+            entry = {
                 "connection": parts[0],
                 "state": parts[1],
                 "uptime": parts[2],
@@ -81,12 +108,18 @@ def get_ipsec_sa(ssh):
                 "remote_address": parts[5],
                 "remote_id": parts[6],
                 "proposal": parts[7] if len(parts) > 7 else ""
-            })
+            }
+            
+            print(f"DEBUG SA: Created entry: {entry}")
+            entries.append(entry)
         
-        print(f"DEBUG: Total entries parsed: {len(entries)}")
+        print(f"DEBUG SA: Total entries parsed: {len(entries)}")
         return entries
+        
     except Exception as e:
         print(f"ERROR in get_ipsec_sa: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return []
 
 @app.route('/fetch-config', methods=['POST'])
