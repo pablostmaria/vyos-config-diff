@@ -81,7 +81,7 @@ function renderIPsecSA(data) {
   if (data.sa && data.sa.length > 0) {
     html += `
       <div class="card">
-        <h2>Security Associations</h2>
+        <h2 style="margin-bottom: 1.5rem;">Información VPN IPsec</h2>
         <div class="table-container">
           <table>
             <thead>
@@ -100,10 +100,15 @@ function renderIPsecSA(data) {
     `;
 
     data.sa.forEach(row => {
+      // Create status indicator (green circle for "up", red circle for "down")
+      const statusIcon = row.state.toLowerCase() === 'up'
+        ? '<span style="display: inline-block; width: 12px; height: 12px; background-color: #10b981; border-radius: 50%;"></span>'
+        : '<span style="display: inline-block; width: 12px; height: 12px; background-color: #ef4444; border-radius: 50%;"></span>';
+
       html += `
         <tr>
           <td>${row.connection}</td>
-          <td>${row.state}</td>
+          <td>${statusIcon}</td>
           <td>${row.uptime}</td>
           <td>${row.bytes}</td>
           <td>${row.packets}</td>
