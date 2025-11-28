@@ -102,22 +102,6 @@ function openFetchModal() {
         </label><br/>
         <label>Puerto SSH:
           <input id="fw_port" placeholder="22" value="22" />
-        </label><br/>
-        <label>Usuario (por defecto vyos):
-          <input id="fw_user" placeholder="vyos" />
-        </label><br/>
-        <label>Password (opcional):
-          <input id="fw_pass" type="password" />
-        </label><br/><br/>
-        <button class="btn primary" id="doFetch">Conectar</button>
-        <button class="btn" onclick="closeModal()">Cancelar</button>
-        <div id="fetchError" style="color:red;margin-top:8px;"></div>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', html);
-  document.getElementById('doFetch').onclick = doFetchConfig;
-}
 
 function closeModal() {
   const m = document.querySelector('.modal');
