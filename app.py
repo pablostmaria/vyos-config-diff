@@ -15,10 +15,11 @@ def index():
 
 def get_system_info(ssh):
     """
-    Gets VyOS system information: hostname, eth0 IP, eth1 IP, eth2 VLANs
+    Gets VyOS system information: hostname, eth0 IP, eth1 IP, eth2 VLANs, version
     """
     info = {
         'hostname': 'Unknown',
+        'version': 'N/A',
         'eth0_ip': 'N/A',
         'eth1_ip': 'N/A',
         'eth2_vlans': []
@@ -32,6 +33,16 @@ def get_system_info(ssh):
         if hostname:
             info['hostname'] = hostname
         print(f"DEBUG Hostname: {hostname}")
+        
+        # Get version
+        cmd = "/usr/bin/vbash -ic 'show version'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        version_output = stdout.read().decode('utf-8', errors='ignore')
+        # Extract version number from "Version:          VyOS 1.4.3"
+        match = re.search(r'Version:\s+VyOS\s+([\d.]+)', version_output)
+        if match:
+            info['version'] = match.group(1)
+        print(f"DEBUG Version: {info['version']}")
         
         # Get eth0 IP
         cmd = "/usr/bin/vbash -ic 'show interfaces ethernet eth0'"
