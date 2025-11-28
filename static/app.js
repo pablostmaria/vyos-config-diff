@@ -103,17 +103,17 @@ function openFetchModal() {
   const html = `
     <div class="modal">
       <div class="modal-content">
-        <h3>Connect to VyOS</h3>
+        <h3>Conectar a VyOS</h3>
         <label>Host / FQDN:
           <input id="fw_host" placeholder="10.0.0.5" />
         </label><br/>
-        <label>SSH Port:
+        <label>Puerto SSH:
           <input id="fw_port" placeholder="22" value="22" />
         </label><br/>
-        <label>User (default vyos):
+        <label>Usuario (por defecto vyos):
           <input id="fw_user" placeholder="vyos" />
         </label><br/>
-        <label>Password (optional):
+        <label>Password (opcional):
           <input id="fw_pass" type="password" />
         </label><br/><br/>
         <button class="btn primary" id="doFetch">Conectar</button>
