@@ -32,6 +32,11 @@ function renderIPsecSA(data) {
     return ip.split('/')[0];
   };
 
+  // Determine labels based on environment
+  const isNGCS = data.system?.environment === 'NGCS';
+  const labelEth0 = isNGCS ? 'IP WAN/Gestión' : 'IP Gestión';
+  const labelEth1 = isNGCS ? 'IP LAN' : 'IP WAN';
+
   let html = `
     <div class="card">
       <h2 style="margin-bottom: 1.5rem;">VyOS: ${hostname}</h2>
@@ -42,8 +47,8 @@ function renderIPsecSA(data) {
               <th>Versión</th>
               <th>Entorno</th>
               <th>Modo IPsec</th>
-              <th>IP Gestión</th>
-              <th>IP WAN</th>
+              <th>${labelEth0}</th>
+              <th>${labelEth1}</th>
   `;
 
   // Add VLAN headers if they exist

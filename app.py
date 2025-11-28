@@ -57,25 +57,29 @@ def get_system_info(ssh):
             info['version'] = match.group(1)
         print(f"DEBUG Version: {info['version']}")
         
-        # Get eth0 IP
+        # Get eth0 IP (Always present, role depends on env)
         cmd = "/usr/bin/vbash -ic 'show interfaces ethernet eth0'"
         stdin, stdout, stderr = ssh.exec_command(cmd)
         eth0_output = stdout.read().decode('utf-8', errors='ignore')
-        # Look for IP address in format: inet 10.x.x.x/xx
         match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', eth0_output)
         if match:
             info['eth0_ip'] = match.group(1)
         print(f"DEBUG eth0: {info['eth0_ip']}")
         
-        # Get eth1 IP (check both eth1 and eth1.XXX tagged interfaces)
+        # Get eth1 IP
+        # For NGCS: eth1 is LAN
+        # For others: eth1 is WAN (check tagged)
+        
         cmd = "/usr/bin/vbash -ic 'show interfaces ethernet eth1'"
         stdin, stdout, stderr = ssh.exec_command(cmd)
         eth1_output = stdout.read().decode('utf-8', errors='ignore')
         match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', eth1_output)
+        
         if match:
             info['eth1_ip'] = match.group(1)
             print(f"DEBUG eth1: {info['eth1_ip']}")
-        else:
+        elif info['environment'] != 'NGCS':
+            # Only check for tagged eth1 if NOT NGCS (or if we want to be safe, check anyway)
             # If no IP on eth1 directly, check for eth1.XXX tagged interfaces
             cmd = "/usr/bin/vbash -ic 'show interfaces'"
             stdin, stdout, stderr = ssh.exec_command(cmd)
@@ -93,36 +97,37 @@ def get_system_info(ssh):
                 if match:
                     info['eth1_ip'] = match.group(1)
                     print(f"DEBUG eth1.{vlan_id}: {info['eth1_ip']}")
-            
-            if info['eth1_ip'] == 'N/A':
-                print(f"DEBUG eth1: No IP found on eth1 or eth1.XXX")
         
-        # Get eth2 VLANs (eth2.XXX interfaces)
-        cmd = "/usr/bin/vbash -ic 'show interfaces'"
-        stdin, stdout, stderr = ssh.exec_command(cmd)
-        interfaces_output = stdout.read().decode('utf-8', errors='ignore')
-        
-        # Find all eth2.XXX interfaces
-        vlan_matches = re.findall(r'eth2\.(\d+)', interfaces_output)
-        print(f"DEBUG VLAN matches: {vlan_matches}")
-        
-        for vlan_id in set(vlan_matches):  # Use set to avoid duplicates
-            # Get IP for this VLAN interface
-            cmd = f"/usr/bin/vbash -ic 'show interfaces ethernet eth2 vif {vlan_id}'"
+        if info['eth1_ip'] == 'N/A':
+             print(f"DEBUG eth1: No IP found")
+
+        # Get eth2 VLANs (Only for Cloud Builder / Flexxible usually, but safe to check)
+        if info['environment'] != 'NGCS':
+            cmd = "/usr/bin/vbash -ic 'show interfaces'"
             stdin, stdout, stderr = ssh.exec_command(cmd)
-            vlan_output = stdout.read().decode('utf-8', errors='ignore')
+            interfaces_output = stdout.read().decode('utf-8', errors='ignore')
             
-            vlan_ip = 'N/A'
-            match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', vlan_output)
-            if match:
-                vlan_ip = match.group(1)
+            # Find all eth2.XXX interfaces
+            vlan_matches = re.findall(r'eth2\.(\d+)', interfaces_output)
+            print(f"DEBUG VLAN matches: {vlan_matches}")
             
-            info['eth2_vlans'].append({
-                'vlan_id': vlan_id,
-                'interface': f'eth2.{vlan_id}',
-                'ip': vlan_ip
-            })
-            print(f"DEBUG VLAN {vlan_id}: {vlan_ip}")
+            for vlan_id in set(vlan_matches):  # Use set to avoid duplicates
+                # Get IP for this VLAN interface
+                cmd = f"/usr/bin/vbash -ic 'show interfaces ethernet eth2 vif {vlan_id}'"
+                stdin, stdout, stderr = ssh.exec_command(cmd)
+                vlan_output = stdout.read().decode('utf-8', errors='ignore')
+                
+                vlan_ip = 'N/A'
+                match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', vlan_output)
+                if match:
+                    vlan_ip = match.group(1)
+                
+                info['eth2_vlans'].append({
+                    'vlan_id': vlan_id,
+                    'interface': f'eth2.{vlan_id}',
+                    'ip': vlan_ip
+                })
+                print(f"DEBUG VLAN {vlan_id}: {vlan_ip}")
         
         return info
         
