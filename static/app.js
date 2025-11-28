@@ -74,40 +74,6 @@ function renderIPsecSA(data) {
             </tr>
           </tbody>
         </table>
-      </div>
-    </div>
-  `;
-
-  if (data.sa && data.sa.length > 0) {
-    html += `
-      <div class="card">
-        <h2 style="margin-bottom: 1.5rem;">Información VPN IPsec</h2>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Conexión</th>
-                <th>Estado</th>
-                <th>Uptime</th>
-                <th>Bytes</th>
-                <th>Paquetes</th>
-                <th>Remote Address</th>
-                <th>Remote ID</th>
-                <th>Proposal</th>
-              </tr>
-          <td>${row.packets}</td>
-          <td>${row.remote_address}</td>
-          <td>${row.remote_id}</td>
-          <td style="font-size: 0.85em;">${row.proposal}</td>
-        </tr>
-      `;
-  });
-
-  html += `
-            </tbody>
-          </table>
-        </div>
-      </div>
     `;
 } else {
   html += `
