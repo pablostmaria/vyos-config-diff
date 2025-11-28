@@ -19,54 +19,6 @@ themeSelect.addEventListener('change', (e) => {
 
 // ========= RENDER IPSEC SA TABLE =========
 function renderIPsecSA(data) {
-  if (!data) {
-    content.innerHTML = '<div class="card"><p>No data available.</p></div>';
-    return;
-  }
-
-  const hostname = data.system?.hostname || 'Unknown';
-
-  let html = `
-    <div class="card">
-      <h2>${hostname} - Info</h2>
-      <div class="table-container">
-        <table>
-          <tbody>
-            <tr>
-              <td><strong>Modo IPsec</strong></td>
-              <td>${data.mode || 'N/A'}</td>
-            </tr>
-            <tr>
-              <td><strong>IP Gestión (eth0)</strong></td>
-              <td>${data.system?.eth0_ip || 'N/A'}</td>
-            </tr>
-            <tr>
-              <td><strong>IP WAN (eth1)</strong></td>
-              <td>${data.system?.eth1_ip || 'N/A'}</td>
-            </tr>
-  `;
-
-  // Add VLANs if they exist
-  if (data.system?.eth2_vlans && data.system.eth2_vlans.length > 0) {
-    const vlansHtml = data.system.eth2_vlans.map(vlan =>
-      `<strong>VLAN ${vlan.vlan_id}</strong> (${vlan.interface}): ${vlan.ip}`
-    ).join('<br>');
-
-    html += `
-            <tr>
-              <td><strong>VLANs (eth2)</strong></td>
-              <td>${vlansHtml}</td>
-            </tr>
-    `;
-  }
-
-  html += `
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
   if (data.sa && data.sa.length > 0) {
     html += `
       <div class="card">
