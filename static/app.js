@@ -19,6 +19,63 @@ themeSelect.addEventListener('change', (e) => {
 
 // ========= RENDER IPSEC SA TABLE =========
 function renderIPsecSA(data) {
+  if (!data) {
+    content.innerHTML = '<div class="card"><p>No data available.</p></div>';
+    return;
+  }
+
+  const hostname = data.system?.hostname || 'Unknown';
+
+  // Helper function to remove network mask from IP
+  const cleanIP = (ip) => {
+    if (!ip || ip === 'N/A') return 'N/A';
+    return ip.split('/')[0];
+  };
+
+  let html = `
+    <div class="card">
+      <h2 style="margin-bottom: 1.5rem;">VyOS: ${hostname}</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Modo IPsec</th>
+              <th>IP Gestión</th>
+              <th>IP WAN</th>
+  `;
+
+  // Add VLAN headers if they exist
+  if (data.system?.eth2_vlans && data.system.eth2_vlans.length > 0) {
+    data.system.eth2_vlans.forEach(vlan => {
+      html += `<th>VLAN ${vlan.vlan_id}</th>`;
+    });
+  }
+
+  html += `
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${data.mode || 'N/A'}</td>
+              <td>${cleanIP(data.system?.eth0_ip)}</td>
+              <td>${cleanIP(data.system?.eth1_ip)}</td>
+  `;
+
+  // Add VLAN IPs
+  if (data.system?.eth2_vlans && data.system.eth2_vlans.length > 0) {
+    data.system.eth2_vlans.forEach(vlan => {
+      html += `<td>${cleanIP(vlan.ip)}</td>`;
+    });
+  }
+
+  html += `
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
   if (data.sa && data.sa.length > 0) {
     html += `
       <div class="card">
