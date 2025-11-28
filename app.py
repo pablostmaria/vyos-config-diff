@@ -19,23 +19,25 @@ def get_ipsec_mode(ssh):
     Returns: "Enrutado (VTI)" or "Políticas"
     """
     try:
-        # Method 1: Try to list VTI interfaces specifically
-        stdin, stdout, stderr = ssh.exec_command("show interfaces vti")
+        # VyOS commands need to be wrapped with /opt/vyatta/bin/vyatta-op-cmd-wrapper
+        # Or we can use vbash -ic 'command'
+        cmd = "/usr/bin/vbash -ic 'show interfaces vti'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
         stdout_data = stdout.read().decode('utf-8', errors='ignore')
         stderr_data = stderr.read().decode('utf-8', errors='ignore')
         
+        print(f"DEBUG VTI: Command: {cmd}")
         print(f"DEBUG VTI: stdout='{stdout_data[:200]}'")
         print(f"DEBUG VTI: stderr='{stderr_data[:200]}'")
         
-        # Check if we got valid interface output (not an error message)
-        if stdout_data and not stderr_data:
-            # Look for interface names like vti0, vti1, etc.
-            if re.search(r'vti\d+', stdout_data, re.IGNORECASE):
-                print("DEBUG VTI: Found VTI interface via 'show interfaces vti'")
-                return "Enrutado (VTI)"
+        # Look for interface names like vti0, vti1, etc.
+        if re.search(r'vti\d+', stdout_data, re.IGNORECASE):
+            print("DEBUG VTI: Found VTI interface")
+            return "Enrutado (VTI)"
         
-        # Method 2: Check configuration for VTI
-        stdin, stdout, stderr = ssh.exec_command("show configuration commands | grep 'set interfaces vti'")
+        # Alternative: Check configuration
+        cmd2 = "/usr/bin/vbash -ic 'show configuration commands | grep \"set interfaces vti\"'"
+        stdin, stdout, stderr = ssh.exec_command(cmd2)
         config_data = stdout.read().decode('utf-8', errors='ignore')
         print(f"DEBUG VTI Config: '{config_data[:200]}'")
         
@@ -48,6 +50,8 @@ def get_ipsec_mode(ssh):
         
     except Exception as e:
         print(f"ERROR in get_ipsec_mode: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return "Políticas"
 
 def get_ipsec_sa(ssh):
@@ -56,9 +60,12 @@ def get_ipsec_sa(ssh):
     Returns: List of SA entries
     """
     try:
-        stdin, stdout, stderr = ssh.exec_command("show vpn ipsec sa")
+        # Use vbash to execute VyOS commands
+        cmd = "/usr/bin/vbash -ic 'show vpn ipsec sa'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
         raw = stdout.read().decode('utf-8', errors='ignore')
         
+        print(f"DEBUG SA: Command: {cmd}")
         print(f"DEBUG SA: Raw output length: {len(raw)}")
         print(f"DEBUG SA: First 500 chars:\n{raw[:500]}")
         
