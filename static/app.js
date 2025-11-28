@@ -95,45 +95,29 @@ function renderIPsecSA(data) {
                 <th>Remote ID</th>
                 <th>Proposal</th>
               </tr>
-            </thead>
-            <tbody>
-    `;
-
-    data.sa.forEach(row => {
-      // Create status indicator (green circle for "up", red circle for "down")
-      const statusIcon = row.state.toLowerCase() === 'up'
-        ? '<span style="display: inline-block; width: 12px; height: 12px; background-color: #10b981; border-radius: 50%;"></span>'
-        : '<span style="display: inline-block; width: 12px; height: 12px; background-color: #ef4444; border-radius: 50%;"></span>';
-
-      html += `
-        <tr>
-          <td>${row.connection}</td>
-          <td>${statusIcon}</td>
-          <td>${row.uptime}</td>
-          <td>${row.bytes}</td>
           <td>${row.packets}</td>
           <td>${row.remote_address}</td>
           <td>${row.remote_id}</td>
           <td style="font-size: 0.85em;">${row.proposal}</td>
         </tr>
       `;
-    });
+  });
 
-    html += `
+  html += `
             </tbody>
           </table>
         </div>
       </div>
     `;
-  } else {
-    html += `
+} else {
+  html += `
       <div class="card">
         <p>No active Security Associations found.</p>
       </div>
     `;
-  }
+}
 
-  content.innerHTML = html;
+content.innerHTML = html;
 }
 
 // ========= CONNECT MODAL =========
