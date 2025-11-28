@@ -74,16 +74,66 @@ function renderIPsecSA(data) {
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  `;
+
+  if (data.sa && data.sa.length > 0) {
+    html += `
+      <div class="card">
+        <h2 style="margin-bottom: 1.5rem;">Información VPN IPsec</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Conexión</th>
+                <th>Estado</th>
+                <th>Uptime</th>
+                <th>Bytes</th>
+                <th>Paquetes</th>
+                <th>Remote Address</th>
+                <th>Remote ID</th>
+                <th>Proposal</th>
+              </tr>
+            </thead>
+            <tbody>
     `;
-} else {
-  html += `
+
+    data.sa.forEach(row => {
+      // Create status indicator (green circle for "up", red circle for "down")
+      const statusIcon = row.state.toLowerCase() === 'up'
+        ? '<span style="display: inline-block; width: 12px; height: 12px; background-color: #10b981; border-radius: 50%;"></span>'
+        : '<span style="display: inline-block; width: 12px; height: 12px; background-color: #ef4444; border-radius: 50%;"></span>';
+
+      html += `
+        <tr>
+          <td>${row.connection}</td>
+          <td>${statusIcon}</td>
+          <td>${row.uptime}</td>
+          <td>${row.bytes}</td>
+          <td>${row.packets}</td>
+          <td>${row.remote_address}</td>
+          <td>${row.remote_id}</td>
+          <td style="font-size: 0.85em;">${row.proposal}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
       <div class="card">
         <p>No active Security Associations found.</p>
       </div>
     `;
-}
+  }
 
-content.innerHTML = html;
+  content.innerHTML = html;
 }
 
 // ========= CONNECT MODAL =========
@@ -102,6 +152,22 @@ function openFetchModal() {
         </label><br/>
         <label>Puerto SSH:
           <input id="fw_port" placeholder="22" value="22" />
+        </label><br/>
+        <label>Usuario (por defecto vyos):
+          <input id="fw_user" placeholder="vyos" />
+        </label><br/>
+        <label>Password (opcional):
+          <input id="fw_pass" type="password" />
+        </label><br/><br/>
+        <button class="btn primary" id="doFetch">Conectar</button>
+        <button class="btn" onclick="closeModal()">Cancelar</button>
+        <div id="fetchError" style="color:red;margin-top:8px;"></div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('doFetch').onclick = doFetchConfig;
+}
 
 function closeModal() {
   const m = document.querySelector('.modal');
