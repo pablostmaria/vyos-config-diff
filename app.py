@@ -54,14 +54,35 @@ def get_system_info(ssh):
             info['eth0_ip'] = match.group(1)
         print(f"DEBUG eth0: {info['eth0_ip']}")
         
-        # Get eth1 IP
+        # Get eth1 IP (check both eth1 and eth1.XXX tagged interfaces)
         cmd = "/usr/bin/vbash -ic 'show interfaces ethernet eth1'"
         stdin, stdout, stderr = ssh.exec_command(cmd)
         eth1_output = stdout.read().decode('utf-8', errors='ignore')
         match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', eth1_output)
         if match:
             info['eth1_ip'] = match.group(1)
-        print(f"DEBUG eth1: {info['eth1_ip']}")
+            print(f"DEBUG eth1: {info['eth1_ip']}")
+        else:
+            # If no IP on eth1 directly, check for eth1.XXX tagged interfaces
+            cmd = "/usr/bin/vbash -ic 'show interfaces'"
+            stdin, stdout, stderr = ssh.exec_command(cmd)
+            interfaces_output = stdout.read().decode('utf-8', errors='ignore')
+            
+            # Find eth1.XXX interfaces
+            eth1_vlan_matches = re.findall(r'eth1\.(\d+)', interfaces_output)
+            if eth1_vlan_matches:
+                # Get IP from the first eth1.XXX interface found
+                vlan_id = eth1_vlan_matches[0]
+                cmd = f"/usr/bin/vbash -ic 'show interfaces ethernet eth1 vif {vlan_id}'"
+                stdin, stdout, stderr = ssh.exec_command(cmd)
+                eth1_vlan_output = stdout.read().decode('utf-8', errors='ignore')
+                match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', eth1_vlan_output)
+                if match:
+                    info['eth1_ip'] = match.group(1)
+                    print(f"DEBUG eth1.{vlan_id}: {info['eth1_ip']}")
+            
+            if info['eth1_ip'] == 'N/A':
+                print(f"DEBUG eth1: No IP found on eth1 or eth1.XXX")
         
         # Get eth2 VLANs (eth2.XXX interfaces)
         cmd = "/usr/bin/vbash -ic 'show interfaces'"
