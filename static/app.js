@@ -179,7 +179,7 @@ async function doFetchConfig() {
 
   const btn = document.getElementById('doFetch');
   btn.disabled = true;
-  btn.textContent = 'Cargando estado IPsec...';
+  btn.textContent = 'Conectando a VyOS...';
   document.getElementById('fetchError').textContent = '';
 
   try {
