@@ -13,6 +13,81 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
+def get_system_info(ssh):
+    """
+    Gets VyOS system information: hostname, eth0 IP, eth1 IP, eth2 VLANs
+    """
+    info = {
+        'hostname': 'Unknown',
+        'eth0_ip': 'N/A',
+        'eth1_ip': 'N/A',
+        'eth2_vlans': []
+    }
+    
+    try:
+        # Get hostname
+        cmd = "/usr/bin/vbash -ic 'show host name'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        hostname = stdout.read().decode('utf-8', errors='ignore').strip()
+        if hostname:
+            info['hostname'] = hostname
+        print(f"DEBUG Hostname: {hostname}")
+        
+        # Get eth0 IP
+        cmd = "/usr/bin/vbash -ic 'show interfaces ethernet eth0'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        eth0_output = stdout.read().decode('utf-8', errors='ignore')
+        # Look for IP address in format: inet 10.x.x.x/xx
+        match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', eth0_output)
+        if match:
+            info['eth0_ip'] = match.group(1)
+        print(f"DEBUG eth0: {info['eth0_ip']}")
+        
+        # Get eth1 IP
+        cmd = "/usr/bin/vbash -ic 'show interfaces ethernet eth1'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        eth1_output = stdout.read().decode('utf-8', errors='ignore')
+        match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', eth1_output)
+        if match:
+            info['eth1_ip'] = match.group(1)
+        print(f"DEBUG eth1: {info['eth1_ip']}")
+        
+        # Get eth2 VLANs (eth2.XXX interfaces)
+        cmd = "/usr/bin/vbash -ic 'show interfaces'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        interfaces_output = stdout.read().decode('utf-8', errors='ignore')
+        
+        # Find all eth2.XXX interfaces
+        vlan_matches = re.findall(r'eth2\.(\d+)', interfaces_output)
+        print(f"DEBUG VLAN matches: {vlan_matches}")
+        
+        for vlan_id in set(vlan_matches):  # Use set to avoid duplicates
+            # Get IP for this VLAN interface
+            cmd = f"/usr/bin/vbash -ic 'show interfaces ethernet eth2 vif {vlan_id}'"
+            stdin, stdout, stderr = ssh.exec_command(cmd)
+            vlan_output = stdout.read().decode('utf-8', errors='ignore')
+            
+            vlan_ip = 'N/A'
+            match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+/\d+)', vlan_output)
+            if match:
+                vlan_ip = match.group(1)
+            
+            info['eth2_vlans'].append({
+                'vlan_id': vlan_id,
+                'interface': f'eth2.{vlan_id}',
+                'ip': vlan_ip
+            })
+            print(f"DEBUG VLAN {vlan_id}: {vlan_ip}")
+        
+        return info
+        
+    except Exception as e:
+        print(f"ERROR in get_system_info: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return info
+
+
 def get_ipsec_mode(ssh):
     """
     Detects IPsec mode by checking if VTI interfaces exist.
@@ -155,6 +230,9 @@ def fetch_config():
         else:
             ssh.connect(hostname=ip_address, port=port, username=user, timeout=5)
 
+        # Get system information
+        system_info = get_system_info(ssh)
+        
         # Get IPsec mode
         mode = get_ipsec_mode(ssh)
         
@@ -166,6 +244,7 @@ def fetch_config():
         return jsonify({
             'status': 'ok',
             'data': {
+                'system': system_info,
                 'mode': mode,
                 'sa': sa_info
             }
