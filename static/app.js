@@ -40,6 +40,7 @@ function renderIPsecSA(data) {
           <thead>
             <tr>
               <th>Versión</th>
+              <th>Entorno</th>
               <th>Modo IPsec</th>
               <th>IP Gestión</th>
               <th>IP WAN</th>
@@ -58,6 +59,7 @@ function renderIPsecSA(data) {
           <tbody>
             <tr>
               <td>${data.system?.version || 'N/A'}</td>
+              <td>${data.system?.environment || 'N/A'}</td>
               <td>${data.mode || 'N/A'}</td>
               <td>${cleanIP(data.system?.eth0_ip)}</td>
               <td>${cleanIP(data.system?.eth1_ip)}</td>

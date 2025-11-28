@@ -20,6 +20,7 @@ def get_system_info(ssh):
     info = {
         'hostname': 'Unknown',
         'version': 'N/A',
+        'environment': 'N/A',
         'eth0_ip': 'N/A',
         'eth1_ip': 'N/A',
         'eth2_vlans': []
@@ -32,7 +33,19 @@ def get_system_info(ssh):
         hostname = stdout.read().decode('utf-8', errors='ignore').strip()
         if hostname:
             info['hostname'] = hostname
+            
+            # Determine Environment
+            parts = hostname.split('-')
+            if len(parts) >= 3 and parts[2] == 'flx':
+                info['environment'] = 'Flexxible'
+            elif len(parts) >= 5:
+                if parts[4].startswith('cdc'):
+                    info['environment'] = 'Cloud Builder'
+                elif parts[4].startswith('cb'):
+                    info['environment'] = 'NGCS'
+            
         print(f"DEBUG Hostname: {hostname}")
+        print(f"DEBUG Environment: {info.get('environment', 'N/A')}")
         
         # Get version
         cmd = "/usr/bin/vbash -ic 'show version'"
