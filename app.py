@@ -238,11 +238,13 @@ def get_ipsec_connections(ssh):
             
             if len(parts) >= 6:
                 conn_name = parts[0]
+                conn_state = parts[1]
                 conn_type = parts[2]
                 local_ts = parts[4]
                 remote_ts = parts[5]
                 
                 connections[conn_name] = {
+                    'state': conn_state,
                     'type': conn_type,
                     'local_ts': local_ts if local_ts != '-' else 'N/A',
                     'remote_ts': remote_ts if remote_ts != '-' else 'N/A'
@@ -251,6 +253,7 @@ def get_ipsec_connections(ssh):
                  # Fallback for partial lines?
                  conn_name = parts[0]
                  connections[conn_name] = {
+                    'state': parts[1] if len(parts) > 1 else 'down',
                     'type': parts[2] if len(parts) > 2 else 'N/A',
                     'local_ts': 'N/A',
                     'remote_ts': 'N/A'
@@ -383,10 +386,15 @@ def fetch_config():
             else:
                 display_type = conn_type # Fallback
             
+            # Determine state: try SA info first, then connection info
+            state = sa_status.get('state')
+            if not state:
+                state = conn_data.get('state', 'down')
+            
             merged_entry = {
                 'peer': peer_ip,
                 'type': display_type,
-                'state': sa_status.get('state', 'down'), # Default to down if no SA found
+                'state': state,
                 'local_ts': conn_data.get('local_ts', 'N/A'),
                 'remote_ts': conn_data.get('remote_ts', 'N/A'),
                 'uptime': sa_status.get('uptime', 'N/A')
