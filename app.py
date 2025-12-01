@@ -40,7 +40,12 @@ def get_system_info(ssh):
                 info['environment'] = 'Flexxible'
             elif len(parts) >= 5:
                 if parts[4].startswith('cdc'):
-                    info['environment'] = 'Cloud Builder'
+                    if hostname.startswith('es-por-'):
+                        info['environment'] = 'Cloud Builder Logroño'
+                    elif hostname.startswith('es-glb-'):
+                        info['environment'] = 'Cloud Builder Madrid'
+                    else:
+                        info['environment'] = 'Cloud Builder'
                 elif parts[4].startswith('cb'):
                     info['environment'] = 'NGCS'
             
