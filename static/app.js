@@ -85,7 +85,8 @@ function renderIPsecSA(data) {
     </div>
   `;
 
-  const vpnData = data.vpn_data || data.sa; // Fallback for backward compatibility if needed
+  const vpnData = data.vpn_data || [];
+  const isVTI = data.mode && data.mode.includes('VTI');
 
   if (vpnData && vpnData.length > 0) {
     html += `
@@ -96,11 +97,10 @@ function renderIPsecSA(data) {
             <thead>
               <tr>
                 <th>Peer</th>
-                <th>Type</th>
+                ${isVTI ? '<th>Interfaz VTI</th>' : ''}
                 <th>Estado</th>
-                <th>Local TS</th>
-                <th>Remote TS</th>
-                <th>Uptime</th>
+                <th>${isVTI ? 'Red Local' : 'Redes Locales'}</th>
+                <th>${isVTI ? 'Redes Enrutadas' : 'Redes Remotas'}</th>
               </tr>
             </thead>
             <tbody>
@@ -108,25 +108,30 @@ function renderIPsecSA(data) {
 
     vpnData.forEach(row => {
       // Create status indicator (green circle for "up", red circle for "down")
-      const statusIcon = row.state.toLowerCase() === 'up'
+      const statusIcon = row.status === 'up'
         ? '<span style="display: inline-block; width: 12px; height: 12px; background-color: #10b981; border-radius: 50%;"></span>'
         : '<span style="display: inline-block; width: 12px; height: 12px; background-color: #ef4444; border-radius: 50%;"></span>';
 
-      // Handle old data structure if fallback is used (though backend is updated)
-      const peer = row.peer || row.connection;
-      const type = row.type || 'N/A';
-      const localTS = row.local_ts || 'N/A';
-      const remoteTS = row.remote_ts || 'N/A';
-      const uptime = row.uptime || 'N/A';
+      let localNets = '';
+      let remoteNets = '';
+
+      if (isVTI) {
+        // VTI Mode: local_lans and routed_nets are arrays
+        localNets = Array.isArray(row.local_lans) ? row.local_lans.join('<br>') : row.local_lans;
+        remoteNets = Array.isArray(row.routed_nets) ? row.routed_nets.join('<br>') : row.routed_nets;
+      } else {
+        // Policy Mode: local_ts and remote_ts are arrays
+        localNets = Array.isArray(row.local_ts) ? row.local_ts.join('<br>') : row.local_ts;
+        remoteNets = Array.isArray(row.remote_ts) ? row.remote_ts.join('<br>') : row.remote_ts;
+      }
 
       html += `
         <tr>
-          <td>${peer}</td>
-          <td>${type}</td>
+          <td>${row.peer}</td>
+          ${isVTI ? `<td>${row.vti_iface || 'N/A'}</td>` : ''}
           <td>${statusIcon}</td>
-          <td>${localTS}</td>
-          <td>${remoteTS}</td>
-          <td>${uptime}</td>
+          <td>${localNets || 'N/A'}</td>
+          <td>${remoteNets || 'N/A'}</td>
         </tr>
       `;
     });

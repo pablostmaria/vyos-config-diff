@@ -266,57 +266,61 @@ def get_ipsec_connections(ssh):
         print(f"ERROR in get_ipsec_connections: {str(e)}")
         return {}
 
-def get_ipsec_sa(ssh):
+def get_vti_data(ssh):
     """
-    Parses 'show vpn ipsec sa' output.
-    Returns: Dict of SA entries keyed by connection name
+    Retrieves VTI specific configuration: bindings, local-lans, and static routes.
     """
+    vti_info = {
+        'bindings': {}, # peer_name -> vti_interface
+        'local_lans': [],
+        'routes': {} # vti_interface -> [routes]
+    }
+    
     try:
-        # Use vbash to execute VyOS commands
-        cmd = "/usr/bin/vbash -ic 'show vpn ipsec sa'"
+        # 1. Get VTI bindings
+        cmd = "/usr/bin/vbash -ic 'show configuration commands | grep \"set vpn ipsec site-to-site peer\" | grep \"vti bind\"'"
         stdin, stdout, stderr = ssh.exec_command(cmd)
-        raw = stdout.read().decode('utf-8', errors='ignore')
+        output = stdout.read().decode('utf-8', errors='ignore')
         
-        print(f"DEBUG SA: Command: {cmd}")
+        # Parse: set vpn ipsec site-to-site peer peer_185-179-185-209 vti bind 'vti1'
+        for line in output.splitlines():
+            match = re.search(r'peer\s+([^\s]+)\s+vti bind\s+\'?([^\']+)\'?', line)
+            if match:
+                peer_name = match.group(1)
+                vti_iface = match.group(2)
+                vti_info['bindings'][peer_name] = vti_iface
         
-        lines = raw.splitlines()
-        filtered_lines = [line.strip() for line in lines if line.strip() and not line.strip().startswith('-')]
+        # 2. Get Local LANs
+        cmd = "/usr/bin/vbash -ic 'show configuration commands | grep \"set firewall group network-group local-lans\"'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        output = stdout.read().decode('utf-8', errors='ignore')
         
-        entries = {}
+        # Parse: set firewall group network-group local-lans network '192.168.4.0/24'
+        for line in output.splitlines():
+            match = re.search(r'network\s+\'?([\d\./]+)\'?', line)
+            if match:
+                vti_info['local_lans'].append(match.group(1))
+                
+        # 3. Get Static Routes per VTI
+        cmd = "/usr/bin/vbash -ic 'show configuration commands | grep \"set protocols static route\" | grep \"interface vti\"'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        output = stdout.read().decode('utf-8', errors='ignore')
         
-        if len(filtered_lines) < 2:
-            return {}
-        
-        # Skip header
-        for line in filtered_lines[1:]:
-            parts = re.split(r'\s{2,}', line)
-            if len(parts) < 7:
-                parts = line.split()
-            
-            if len(parts) < 7:
-                continue
-            
-            connection_name = parts[0]
-            
-            entry = {
-                "connection": connection_name,
-                "state": parts[1],
-                "uptime": parts[2],
-                "bytes": parts[3],
-                "packets": parts[4],
-                "remote_address": parts[5],
-                "remote_id": parts[6],
-                "proposal": parts[7] if len(parts) > 7 else ""
-            }
-            entries[connection_name] = entry
-            
-        return entries
+        # Parse: set protocols static route 192.168.0.0/24 interface vti1
+        for line in output.splitlines():
+            match = re.search(r'route\s+([^\s]+)\s+interface\s+([^\s]+)', line)
+            if match:
+                route = match.group(1)
+                vti_iface = match.group(2)
+                if vti_iface not in vti_info['routes']:
+                    vti_info['routes'][vti_iface] = []
+                vti_info['routes'][vti_iface].append(route)
+                
+        return vti_info
         
     except Exception as e:
-        print(f"ERROR in get_ipsec_sa: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {}
+        print(f"ERROR in get_vti_data: {str(e)}")
+        return vti_info
 
 @app.route('/fetch-config', methods=['POST'])
 def fetch_config():
@@ -356,67 +360,104 @@ def fetch_config():
         # Get IPsec SA information (status)
         sa_info = get_ipsec_sa(ssh)
         
+        # Get VTI specific data if mode is VTI
+        vti_data = {}
+        if 'VTI' in mode:
+            vti_data = get_vti_data(ssh)
+        
         ssh.close()
         
-        # Merge data
-        merged_data = []
+        # Process data based on mode
+        processed_vpn_data = []
         
-        # Iterate over configured connections
-        for conn_name, conn_data in connections.items():
-            # Find matching SA status
-            sa_status = sa_info.get(conn_name, {})
-            
-            # Extract Peer IP from connection name (e.g. peer_195-53-238-105)
-            peer_ip = 'N/A'
-            if conn_name.startswith('peer_'):
-                # Remove 'peer_' and replace '-' with '.'
-                # Also handle suffixes like '-tunnel-0' if present in name (though usually it's just peer_IP)
-                # Let's try to extract the IP part.
-                # Regex for IP with dashes: \d+-\d+-\d+-\d+
-                ip_match = re.search(r'(\d+)-(\d+)-(\d+)-(\d+)', conn_name)
+        # Helper to extract IP from peer name
+        def extract_peer_ip(name):
+            if name.startswith('peer_'):
+                ip_match = re.search(r'(\d+)-(\d+)-(\d+)-(\d+)', name)
                 if ip_match:
-                    peer_ip = f"{ip_match.group(1)}.{ip_match.group(2)}.{ip_match.group(3)}.{ip_match.group(4)}"
+                    return f"{ip_match.group(1)}.{ip_match.group(2)}.{ip_match.group(3)}.{ip_match.group(4)}"
+            return 'N/A'
+
+        # Helper to get combined status
+        def get_combined_status(peer_base_name):
+            # Status is GREEN (up) only if BOTH Phase 1 and Phase 2 are UP
+            # Phase 1 is usually the base name (e.g., peer_X)
+            # Phase 2 usually has suffix (e.g., peer_X-tunnel-0)
             
-            # Map Type
-            conn_type = conn_data.get('type', 'N/A')
-            if 'ikev2' in conn_type.lower():
-                display_type = 'Fase 1'
-            elif 'ipsec' in conn_type.lower():
-                display_type = 'Fase 2'
-            else:
-                display_type = conn_type # Fallback
-            
-            # Determine state: try SA info first, then connection info
-            state = sa_status.get('state')
-            if not state:
-                state = conn_data.get('state', 'down')
-            
-            merged_entry = {
-                'peer': peer_ip,
-                'type': display_type,
-                'state': state,
-                'local_ts': conn_data.get('local_ts', 'N/A'),
-                'remote_ts': conn_data.get('remote_ts', 'N/A'),
-                'uptime': sa_status.get('uptime', 'N/A')
-            }
-            merged_data.append(merged_entry)
-            
-        # Also add any SAs that weren't in connections (orphans? or maybe parsing failed)
-        for conn_name, sa_data in sa_info.items():
-            if conn_name not in connections:
-                 # Try to extract IP
-                peer_ip = 'N/A'
-                ip_match = re.search(r'(\d+)-(\d+)-(\d+)-(\d+)', conn_name)
-                if ip_match:
-                    peer_ip = f"{ip_match.group(1)}.{ip_match.group(2)}.{ip_match.group(3)}.{ip_match.group(4)}"
+            # Find Phase 1 status
+            p1_state = 'down'
+            if peer_base_name in connections:
+                p1_state = connections[peer_base_name].get('state', 'down')
+            elif peer_base_name in sa_info:
+                p1_state = sa_info[peer_base_name].get('state', 'down')
                 
-                merged_data.append({
+            # Find Phase 2 status (any tunnel associated with this peer)
+            p2_state = 'down'
+            # Look for any connection starting with peer_base_name + '-'
+            for conn_name, conn_val in connections.items():
+                if conn_name.startswith(peer_base_name + '-'):
+                    if conn_val.get('state') == 'up':
+                        p2_state = 'up'
+                        break
+            
+            # If not found in connections, check SAs
+            if p2_state == 'down':
+                for sa_name, sa_val in sa_info.items():
+                    if sa_name.startswith(peer_base_name + '-'):
+                        if sa_val.get('state') == 'up':
+                            p2_state = 'up'
+                            break
+            
+            return 'up' if (p1_state == 'up' and p2_state == 'up') else 'down'
+
+        # Group connections by Peer (base name)
+        peers = set()
+        for conn_name in connections.keys():
+            # Extract base peer name (e.g., peer_195-53-238-105 from peer_195-53-238-105-tunnel-0)
+            # Actually, usually there is a "peer_X" (IKE) and "peer_X-tunnel-Y" (IPsec)
+            # We want to group by the IP part basically.
+            if '-tunnel-' in conn_name:
+                base = conn_name.split('-tunnel-')[0]
+                peers.add(base)
+            else:
+                peers.add(conn_name)
+                
+        for peer_base in peers:
+            peer_ip = extract_peer_ip(peer_base)
+            combined_status = get_combined_status(peer_base)
+            
+            if 'VTI' in mode:
+                # VTI Mode Data
+                vti_iface = vti_data['bindings'].get(peer_base, 'N/A')
+                local_lans = vti_data['local_lans']
+                routed_nets = vti_data['routes'].get(vti_iface, [])
+                
+                processed_vpn_data.append({
                     'peer': peer_ip,
-                    'type': 'Unknown',
-                    'state': sa_data.get('state', 'down'),
-                    'local_ts': 'N/A',
-                    'remote_ts': 'N/A',
-                    'uptime': sa_data.get('uptime', 'N/A')
+                    'vti_iface': vti_iface,
+                    'status': combined_status,
+                    'local_lans': local_lans,
+                    'routed_nets': routed_nets
+                })
+            else:
+                # Policy Mode Data
+                # Get Local/Remote TS from the Phase 2 connection (tunnel)
+                local_ts = []
+                remote_ts = []
+                
+                # Find associated tunnels
+                for conn_name, conn_val in connections.items():
+                    if conn_name.startswith(peer_base + '-'):
+                        l_ts = conn_val.get('local_ts', 'N/A')
+                        r_ts = conn_val.get('remote_ts', 'N/A')
+                        if l_ts != 'N/A': local_ts.append(l_ts)
+                        if r_ts != 'N/A': remote_ts.append(r_ts)
+                
+                processed_vpn_data.append({
+                    'peer': peer_ip,
+                    'status': combined_status,
+                    'local_ts': local_ts,
+                    'remote_ts': remote_ts
                 })
 
         return jsonify({
@@ -424,7 +465,7 @@ def fetch_config():
             'data': {
                 'system': system_info,
                 'mode': mode,
-                'vpn_data': merged_data # New merged list
+                'vpn_data': processed_vpn_data
             }
         })
     except paramiko.AuthenticationException:
