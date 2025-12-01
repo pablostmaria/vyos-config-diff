@@ -192,6 +192,57 @@ def get_ipsec_connections(ssh):
     try:
         cmd = "/usr/bin/vbash -ic 'show vpn ipsec connections'"
         stdin, stdout, stderr = ssh.exec_command(cmd)
+        raw = stdout.read().decode('utf-8', errors='ignore')
+        
+        print(f"DEBUG CONNECTIONS: Command: {cmd}")
+        # print(f"DEBUG CONNECTIONS: First 500 chars:\n{raw[:500]}")
+        
+        connections = {}
+        
+        # Regex to find connection blocks and details
+        # Assuming format:
+        # Connection: peer_195-53-238-105
+        #   Type: IKEv2
+        #   Local TS: 10.0.0.0/24
+        #   Remote TS: 192.168.1.0/24
+        
+        lines = raw.splitlines()
+        current_conn_name = None
+        
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped: continue
+            
+            # Check if it's a connection header (start of line, no indentation)
+            if not line.startswith(' '):
+                # It's likely a connection name. Remove colon if present.
+                parts = line_stripped.split(':')
+                current_conn_name = parts[0].strip()
+                if current_conn_name:
+                    connections[current_conn_name] = {
+                        'type': 'N/A',
+                        'local_ts': 'N/A',
+                        'remote_ts': 'N/A'
+                    }
+            elif current_conn_name:
+                # It's a detail line
+                if ':' in line_stripped:
+                    key, value = line_stripped.split(':', 1)
+                    key = key.strip().lower()
+                    value = value.strip()
+                    
+                    if 'ike' in key or 'type' in key or 'protocol' in key:
+                        connections[current_conn_name]['type'] = value
+                    elif 'local' in key and 'ts' in key:
+                        connections[current_conn_name]['local_ts'] = value
+                    elif 'remote' in key and 'ts' in key:
+                        connections[current_conn_name]['remote_ts'] = value
+        
+        print(f"DEBUG CONNECTIONS: Parsed {len(connections)} connections")
+        return connections
+
+    except Exception as e:
+        print(f"ERROR in get_ipsec_connections: {str(e)}")
         return {}
 
 def get_ipsec_sa(ssh):
