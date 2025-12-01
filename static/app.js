@@ -85,7 +85,9 @@ function renderIPsecSA(data) {
     </div>
   `;
 
-  if (data.sa && data.sa.length > 0) {
+  const vpnData = data.vpn_data || data.sa; // Fallback for backward compatibility if needed
+
+  if (vpnData && vpnData.length > 0) {
     html += `
       <div class="card">
         <h2 style="margin-bottom: 1.5rem;">Información VPN IPsec</h2>
@@ -93,35 +95,38 @@ function renderIPsecSA(data) {
           <table>
             <thead>
               <tr>
-                <th>Conexión</th>
+                <th>Peer</th>
+                <th>Type</th>
                 <th>Estado</th>
+                <th>Local TS</th>
+                <th>Remote TS</th>
                 <th>Uptime</th>
-                <th>Bytes</th>
-                <th>Paquetes</th>
-                <th>Remote Address</th>
-                <th>Remote ID</th>
-                <th>Proposal</th>
               </tr>
             </thead>
             <tbody>
     `;
 
-    data.sa.forEach(row => {
+    vpnData.forEach(row => {
       // Create status indicator (green circle for "up", red circle for "down")
       const statusIcon = row.state.toLowerCase() === 'up'
         ? '<span style="display: inline-block; width: 12px; height: 12px; background-color: #10b981; border-radius: 50%;"></span>'
         : '<span style="display: inline-block; width: 12px; height: 12px; background-color: #ef4444; border-radius: 50%;"></span>';
 
+      // Handle old data structure if fallback is used (though backend is updated)
+      const peer = row.peer || row.connection;
+      const type = row.type || 'N/A';
+      const localTS = row.local_ts || 'N/A';
+      const remoteTS = row.remote_ts || 'N/A';
+      const uptime = row.uptime || 'N/A';
+
       html += `
         <tr>
-          <td>${row.connection}</td>
+          <td>${peer}</td>
+          <td>${type}</td>
           <td>${statusIcon}</td>
-          <td>${row.uptime}</td>
-          <td>${row.bytes}</td>
-          <td>${row.packets}</td>
-          <td>${row.remote_address}</td>
-          <td>${row.remote_id}</td>
-          <td style="font-size: 0.85em;">${row.proposal}</td>
+          <td>${localTS}</td>
+          <td>${remoteTS}</td>
+          <td>${uptime}</td>
         </tr>
       `;
     });

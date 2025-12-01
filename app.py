@@ -184,10 +184,136 @@ def get_ipsec_mode(ssh):
         traceback.print_exc()
         return "Políticas"
 
+def get_ipsec_connections(ssh):
+    """
+    Parses 'show vpn ipsec connections' output.
+    Returns: Dict of connections with details (type, local_ts, remote_ts)
+    """
+    try:
+        cmd = "/usr/bin/vbash -ic 'show vpn ipsec connections'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        raw = stdout.read().decode('utf-8', errors='ignore')
+        
+        print(f"DEBUG CONNECTIONS: Command: {cmd}")
+        print(f"DEBUG CONNECTIONS: First 500 chars:\n{raw[:500]}")
+        
+        connections = {}
+        current_conn = None
+        
+        # Simple parser assuming indented structure or similar
+        # We might need to adjust this based on actual output
+        # Assuming output looks something like:
+        # Connection: peer_195-53-238-105
+        #   Type: IKEv2
+        #   Local TS: ...
+        #   Remote TS: ...
+        
+        # Or maybe it's a table? The user mentioned "Type" and "Local TS" columns/fields.
+        # Let's try to parse it line by line looking for keywords.
+        
+        lines = raw.splitlines()
+        for line in lines:
+            line = line.strip()
+            if not line: continue
+            
+            # Heuristic to find connection name (often starts with peer_)
+            # But user said "peer_195-53-238-105", so maybe we look for lines starting with that?
+            # Or maybe it's a list.
+            
+            # Let's assume a format where connection name is the key.
+            # If we see a line that looks like a connection name (no spaces, maybe colons?)
+            
+            # Actually, without sample output, this is tricky.
+            # But often "show vpn ipsec connections" in VyOS/StrongSwan shows a list.
+            
+            # Let's try to grab lines that look like connection definitions.
+            # For now, I'll assume a specific format and add debug prints to help refine it if it fails.
+            
+            # Regex for connection name (e.g. peer_195-53-238-105)
+            # It usually appears at the start of a block.
+            
+            # Let's try to capture everything and we'll refine.
+            pass
+
+        # Since I don't know the exact format, I'll use a more generic approach:
+        # I'll rely on the fact that `get_ipsec_sa` returns connection names.
+        # I'll try to find those names in the output of `connections` command.
+        
+        return raw # For now, let's return raw or parse if we can find patterns.
+        
+        # WAIT, better approach:
+        # The user said "Type" from "show vpn ipsec connections".
+        # If I look at standard VyOS output for this command, it often looks like:
+        # Connection                 State    Uptime    Bytes In/Out    Packets In/Out    Remote Address    Remote ID    Proposal
+        # -------------------------  -------  --------  --------------  ----------------  ----------------  -----------  ----------------
+        # peer_195-53-238-105-tunnel-0  up       ...
+        
+        # But that's `show vpn ipsec sa`.
+        # `show vpn ipsec connections` might be different.
+        
+        # Let's try to parse it as key-value pairs if possible.
+        
+        # Re-reading user request: "La segunda columna mostrará el Type del comando 'show vpn ipsec connections' si obtenemos IKEv2 pondrá 'Fase 1' y si obtenemos 'IPsec' pondrá 'Fase 2'"
+        
+        # Okay, I will try to parse it.
+        
+        # Regex to find connection blocks and details
+        # Assuming format:
+        # Connection: peer_195-53-238-105
+        #   Type: IKEv2
+        #   Local TS: 10.0.0.0/24
+        #   Remote TS: 192.168.1.0/24
+        
+        # We will look for "Connection: <name>" or just "<name>:" at start of line
+        # And then capture indented keys.
+        
+        # Since we don't know the exact format, let's try a generic block parser.
+        # We'll split by double newlines or look for unindented lines as headers.
+        
+        lines = raw.splitlines()
+        current_conn_name = None
+        
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped: continue
+            
+            # Check if it's a connection header (start of line, no indentation)
+            if not line.startswith(' '):
+                # It's likely a connection name. Remove colon if present.
+                parts = line_stripped.split(':')
+                current_conn_name = parts[0].strip()
+                if current_conn_name:
+                    connections[current_conn_name] = {
+                        'type': 'N/A',
+                        'local_ts': 'N/A',
+                        'remote_ts': 'N/A'
+                    }
+            elif current_conn_name:
+                # It's a detail line
+                if ':' in line_stripped:
+                    key, value = line_stripped.split(':', 1)
+                    key = key.strip().lower()
+                    value = value.strip()
+                    
+                    if 'ike' in key or 'type' in key or 'protocol' in key:
+                        connections[current_conn_name]['type'] = value
+                    elif 'local' in key and 'ts' in key:
+                        connections[current_conn_name]['local_ts'] = value
+                    elif 'remote' in key and 'ts' in key:
+                        connections[current_conn_name]['remote_ts'] = value
+                    # Handle "authentication" or other fields if needed
+        
+        print(f"DEBUG CONNECTIONS: Parsed {len(connections)} connections")
+        return connections
+
+    except Exception as e:
+        print(f"ERROR in get_ipsec_connections: {str(e)}")
+        return {}
+
 def get_ipsec_sa(ssh):
     """
     Parses 'show vpn ipsec sa' output.
-    Returns: List of SA entries
+    Returns: Dict of SA entries keyed by connection name
     """
     try:
         # Use vbash to execute VyOS commands
@@ -196,48 +322,28 @@ def get_ipsec_sa(ssh):
         raw = stdout.read().decode('utf-8', errors='ignore')
         
         print(f"DEBUG SA: Command: {cmd}")
-        print(f"DEBUG SA: Raw output length: {len(raw)}")
-        print(f"DEBUG SA: First 500 chars:\n{raw[:500]}")
         
-        # Split into lines
         lines = raw.splitlines()
-        print(f"DEBUG SA: Total lines: {len(lines)}")
+        filtered_lines = [line.strip() for line in lines if line.strip() and not line.strip().startswith('-')]
         
-        # Filter out empty lines and separator lines
-        filtered_lines = []
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped and not stripped.startswith('-'):
-                filtered_lines.append(stripped)
-                print(f"DEBUG SA: Line {i}: '{stripped}'")
-        
-        print(f"DEBUG SA: Filtered lines count: {len(filtered_lines)}")
+        entries = {}
         
         if len(filtered_lines) < 2:
-            print("DEBUG SA: Not enough lines (need at least header + 1 data row)")
-            return []
+            return {}
         
-        entries = []
-        # Skip the first line (header)
-        for i, line in enumerate(filtered_lines[1:], start=1):
-            print(f"DEBUG SA: Processing data line {i}: '{line}'")
-            
-            # Try different splitting strategies
-            # Strategy 1: Split by 2+ spaces
+        # Skip header
+        for line in filtered_lines[1:]:
             parts = re.split(r'\s{2,}', line)
-            print(f"DEBUG SA: Split by 2+ spaces: {parts} (count: {len(parts)})")
-            
-            # If that didn't work well, try single space but be smarter
             if len(parts) < 7:
                 parts = line.split()
-                print(f"DEBUG SA: Split by single space: {parts} (count: {len(parts)})")
             
             if len(parts) < 7:
-                print(f"DEBUG SA: Skipping line {i} - not enough parts")
                 continue
             
+            connection_name = parts[0]
+            
             entry = {
-                "connection": parts[0],
+                "connection": connection_name,
                 "state": parts[1],
                 "uptime": parts[2],
                 "bytes": parts[3],
@@ -246,18 +352,15 @@ def get_ipsec_sa(ssh):
                 "remote_id": parts[6],
                 "proposal": parts[7] if len(parts) > 7 else ""
             }
+            entries[connection_name] = entry
             
-            print(f"DEBUG SA: Created entry: {entry}")
-            entries.append(entry)
-        
-        print(f"DEBUG SA: Total entries parsed: {len(entries)}")
         return entries
         
     except Exception as e:
         print(f"ERROR in get_ipsec_sa: {str(e)}")
         import traceback
         traceback.print_exc()
-        return []
+        return {}
 
 @app.route('/fetch-config', methods=['POST'])
 def fetch_config():
@@ -291,17 +394,76 @@ def fetch_config():
         # Get IPsec mode
         mode = get_ipsec_mode(ssh)
         
-        # Get IPsec SA information
+        # Get IPsec connections (config)
+        connections = get_ipsec_connections(ssh)
+        
+        # Get IPsec SA information (status)
         sa_info = get_ipsec_sa(ssh)
         
         ssh.close()
         
+        # Merge data
+        merged_data = []
+        
+        # Iterate over configured connections
+        for conn_name, conn_data in connections.items():
+            # Find matching SA status
+            sa_status = sa_info.get(conn_name, {})
+            
+            # Extract Peer IP from connection name (e.g. peer_195-53-238-105)
+            peer_ip = 'N/A'
+            if conn_name.startswith('peer_'):
+                # Remove 'peer_' and replace '-' with '.'
+                # Also handle suffixes like '-tunnel-0' if present in name (though usually it's just peer_IP)
+                # Let's try to extract the IP part.
+                # Regex for IP with dashes: \d+-\d+-\d+-\d+
+                ip_match = re.search(r'(\d+)-(\d+)-(\d+)-(\d+)', conn_name)
+                if ip_match:
+                    peer_ip = f"{ip_match.group(1)}.{ip_match.group(2)}.{ip_match.group(3)}.{ip_match.group(4)}"
+            
+            # Map Type
+            conn_type = conn_data.get('type', 'N/A')
+            if 'ikev2' in conn_type.lower():
+                display_type = 'Fase 1'
+            elif 'ipsec' in conn_type.lower():
+                display_type = 'Fase 2'
+            else:
+                display_type = conn_type # Fallback
+            
+            merged_entry = {
+                'peer': peer_ip,
+                'type': display_type,
+                'state': sa_status.get('state', 'down'), # Default to down if no SA found
+                'local_ts': conn_data.get('local_ts', 'N/A'),
+                'remote_ts': conn_data.get('remote_ts', 'N/A'),
+                'uptime': sa_status.get('uptime', 'N/A')
+            }
+            merged_data.append(merged_entry)
+            
+        # Also add any SAs that weren't in connections (orphans? or maybe parsing failed)
+        for conn_name, sa_data in sa_info.items():
+            if conn_name not in connections:
+                 # Try to extract IP
+                peer_ip = 'N/A'
+                ip_match = re.search(r'(\d+)-(\d+)-(\d+)-(\d+)', conn_name)
+                if ip_match:
+                    peer_ip = f"{ip_match.group(1)}.{ip_match.group(2)}.{ip_match.group(3)}.{ip_match.group(4)}"
+                
+                merged_data.append({
+                    'peer': peer_ip,
+                    'type': 'Unknown',
+                    'state': sa_data.get('state', 'down'),
+                    'local_ts': 'N/A',
+                    'remote_ts': 'N/A',
+                    'uptime': sa_data.get('uptime', 'N/A')
+                })
+
         return jsonify({
             'status': 'ok',
             'data': {
                 'system': system_info,
                 'mode': mode,
-                'sa': sa_info
+                'vpn_data': merged_data # New merged list
             }
         })
     except paramiko.AuthenticationException:
