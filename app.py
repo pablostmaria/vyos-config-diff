@@ -199,44 +199,62 @@ def get_ipsec_connections(ssh):
         
         connections = {}
         
-        # Regex to find connection blocks and details
-        # Assuming format:
-        # Connection: peer_195-53-238-105
-        #   Type: IKEv2
-        #   Local TS: 10.0.0.0/24
-        #   Remote TS: 192.168.1.0/24
+        # Based on user screenshot, the output is a table:
+        # Connection                     State    Type    Remote address    Local TS    Remote TS
+        # -----------------------------  -------  ------  ----------------  ----------  ----------
+        # peer_195-53-238-105            up       IKEv2   195.53.238.105    -           -
+        # peer_195-53-238-105-tunnel-0   up       IPsec   195.53.238.105    0.0.0.0/0   0.0.0.0/0
         
         lines = raw.splitlines()
-        current_conn_name = None
         
+        # Filter out empty lines and separator lines
+        filtered_lines = []
         for line in lines:
-            line_stripped = line.strip()
-            if not line_stripped: continue
+            stripped = line.strip()
+            if stripped and not stripped.startswith('-'):
+                filtered_lines.append(stripped)
+        
+        if len(filtered_lines) < 2:
+            print("DEBUG CONNECTIONS: Not enough lines")
+            return {}
             
-            # Check if it's a connection header (start of line, no indentation)
-            if not line.startswith(' '):
-                # It's likely a connection name. Remove colon if present.
-                parts = line_stripped.split(':')
-                current_conn_name = parts[0].strip()
-                if current_conn_name:
-                    connections[current_conn_name] = {
-                        'type': 'N/A',
-                        'local_ts': 'N/A',
-                        'remote_ts': 'N/A'
-                    }
-            elif current_conn_name:
-                # It's a detail line
-                if ':' in line_stripped:
-                    key, value = line_stripped.split(':', 1)
-                    key = key.strip().lower()
-                    value = value.strip()
-                    
-                    if 'ike' in key or 'type' in key or 'protocol' in key:
-                        connections[current_conn_name]['type'] = value
-                    elif 'local' in key and 'ts' in key:
-                        connections[current_conn_name]['local_ts'] = value
-                    elif 'remote' in key and 'ts' in key:
-                        connections[current_conn_name]['remote_ts'] = value
+        # Skip header line (starts with "Connection")
+        # We assume the columns are consistent
+        
+        for line in filtered_lines:
+            if line.lower().startswith('connection'):
+                continue
+                
+            # Split by whitespace
+            parts = line.split()
+            
+            # Expected columns:
+            # 0: Connection
+            # 1: State
+            # 2: Type
+            # 3: Remote address
+            # 4: Local TS
+            # 5: Remote TS
+            
+            if len(parts) >= 6:
+                conn_name = parts[0]
+                conn_type = parts[2]
+                local_ts = parts[4]
+                remote_ts = parts[5]
+                
+                connections[conn_name] = {
+                    'type': conn_type,
+                    'local_ts': local_ts if local_ts != '-' else 'N/A',
+                    'remote_ts': remote_ts if remote_ts != '-' else 'N/A'
+                }
+            elif len(parts) >= 3:
+                 # Fallback for partial lines?
+                 conn_name = parts[0]
+                 connections[conn_name] = {
+                    'type': parts[2] if len(parts) > 2 else 'N/A',
+                    'local_ts': 'N/A',
+                    'remote_ts': 'N/A'
+                }
         
         print(f"DEBUG CONNECTIONS: Parsed {len(connections)} connections")
         return connections
