@@ -322,6 +322,58 @@ def get_vti_data(ssh):
         print(f"ERROR in get_vti_data: {str(e)}")
         return vti_info
 
+def get_ipsec_sa(ssh):
+    """
+    Parses 'show vpn ipsec sa' output.
+    Returns: Dict of SA entries keyed by connection name
+    """
+    try:
+        # Use vbash to execute VyOS commands
+        cmd = "/usr/bin/vbash -ic 'show vpn ipsec sa'"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        raw = stdout.read().decode('utf-8', errors='ignore')
+        
+        print(f"DEBUG SA: Command: {cmd}")
+        
+        lines = raw.splitlines()
+        filtered_lines = [line.strip() for line in lines if line.strip() and not line.strip().startswith('-')]
+        
+        entries = {}
+        
+        if len(filtered_lines) < 2:
+            return {}
+        
+        # Skip header
+        for line in filtered_lines[1:]:
+            parts = re.split(r'\s{2,}', line)
+            if len(parts) < 7:
+                parts = line.split()
+            
+            if len(parts) < 7:
+                continue
+            
+            connection_name = parts[0]
+            
+            entry = {
+                "connection": connection_name,
+                "state": parts[1],
+                "uptime": parts[2],
+                "bytes": parts[3],
+                "packets": parts[4],
+                "remote_address": parts[5],
+                "remote_id": parts[6],
+                "proposal": parts[7] if len(parts) > 7 else ""
+            }
+            entries[connection_name] = entry
+            
+        return entries
+        
+    except Exception as e:
+        print(f"ERROR in get_ipsec_sa: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {}
+
 @app.route('/fetch-config', methods=['POST'])
 def fetch_config():
     data = request.get_json() or {}
