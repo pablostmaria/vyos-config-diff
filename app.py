@@ -465,13 +465,14 @@ def fetch_config():
         # Group connections by Peer (base name)
         peers = set()
         for conn_name in connections.keys():
-            # Extract base peer name (e.g., peer_195-53-238-105 from peer_195-53-238-105-tunnel-0)
-            # Actually, usually there is a "peer_X" (IKE) and "peer_X-tunnel-Y" (IPsec)
+            # Extract base peer name (e.g., peer_195-53-238-105 from peer_195-53-238-105-tunnel-0 or -vti)
             # We want to group by the IP part basically.
-            if '-tunnel-' in conn_name:
-                base = conn_name.split('-tunnel-')[0]
-                peers.add(base)
+            # Match peer_IP-IP-IP-IP and treat everything else as suffix
+            match = re.match(r'(peer_\d+-\d+-\d+-\d+)', conn_name)
+            if match:
+                peers.add(match.group(1))
             else:
+                # Fallback for non-standard names
                 peers.add(conn_name)
                 
         for peer_base in peers:
