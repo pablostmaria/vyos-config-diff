@@ -117,22 +117,37 @@ function renderIPsecSA(data) {
       let remoteNets = '';
       let tunnelsHtml = '';
 
+      const itemStyle = 'border-bottom: 1px solid #e5e7eb; padding: 6px 0;';
+
       if (isVTI) {
         // VTI Mode: local_lans and routed_nets are arrays
-        localNets = Array.isArray(row.local_lans) ? row.local_lans.join('<br>') : row.local_lans;
-        remoteNets = Array.isArray(row.routed_nets) ? row.routed_nets.join('<br>') : row.routed_nets;
+        localNets = Array.isArray(row.local_lans)
+          ? row.local_lans.map(net => `<div style="${itemStyle}">${net}</div>`).join('')
+          : row.local_lans;
+        remoteNets = Array.isArray(row.routed_nets)
+          ? row.routed_nets.map(net => `<div style="${itemStyle}">${net}</div>`).join('')
+          : row.routed_nets;
       } else {
         // Policy Mode: local_ts and remote_ts are arrays
-        localNets = Array.isArray(row.local_ts) ? row.local_ts.join('<br>') : row.local_ts;
-        remoteNets = Array.isArray(row.remote_ts) ? row.remote_ts.join('<br>') : row.remote_ts;
+        localNets = Array.isArray(row.local_ts)
+          ? row.local_ts.map(net => `<div style="${itemStyle}">${net}</div>`).join('')
+          : row.local_ts;
+        remoteNets = Array.isArray(row.remote_ts)
+          ? row.remote_ts.map(net => `<div style="${itemStyle}">${net}</div>`).join('')
+          : row.remote_ts;
 
         // Render tunnels list
         if (row.tunnels && Array.isArray(row.tunnels)) {
           tunnelsHtml = row.tunnels.map(t => {
             const tIcon = t.status === 'up'
-              ? '<span style="display: inline-block; width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; margin-left: 5px;"></span>'
-              : '<span style="display: inline-block; width: 10px; height: 10px; background-color: #ef4444; border-radius: 50%; margin-left: 5px;"></span>';
-            return `<div>${t.name} ${tIcon}</div>`;
+              ? '<span style="display: inline-block; width: 10px; height: 10px; background-color: #10b981; border-radius: 50%;"></span>'
+              : '<span style="display: inline-block; width: 10px; height: 10px; background-color: #ef4444; border-radius: 50%;"></span>';
+
+            // Use flexbox for vertical alignment of icons and name
+            return `<div style="display: flex; justify-content: space-between; align-items: center; ${itemStyle}">
+                            <span>${t.name}</span>
+                            ${tIcon}
+                        </div>`;
           }).join('');
         }
       }
