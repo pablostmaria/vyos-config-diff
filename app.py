@@ -525,13 +525,37 @@ def fetch_config():
                 })
             else:
                 # Policy Mode Data
-                # Get Local/Remote TS from the Phase 2 connection (tunnel)
+                # Status is Phase 1 status (base peer)
+                p1_state = 'down'
+                if peer_base in connections:
+                    p1_state = connections[peer_base].get('state', 'down')
+                elif peer_base in sa_info:
+                    p1_state = sa_info[peer_base].get('state', 'down')
+
                 local_ts = []
                 remote_ts = []
+                tunnels = []
                 
                 # Find associated tunnels
                 for conn_name, conn_val in connections.items():
                     if conn_name.startswith(peer_base + '-'):
+                        # Extract tunnel name/index
+                        # e.g. peer_192-168-1-1-tunnel-1 -> Tunnel 1
+                        # e.g. peer_192-168-1-1-tunnel-0 -> Tunnel 0
+                        tunnel_suffix = conn_name.replace(peer_base + '-', '')
+                        tunnel_display = tunnel_suffix.replace('tunnel-', 'Tunnel ')
+                        
+                        # Tunnel status
+                        t_state = conn_val.get('state', 'down')
+                        if t_state != 'up':
+                             if conn_name in sa_info and sa_info[conn_name].get('state') == 'up':
+                                 t_state = 'up'
+
+                        tunnels.append({
+                            'name': tunnel_display,
+                            'status': t_state
+                        })
+
                         l_ts = conn_val.get('local_ts', 'N/A')
                         r_ts = conn_val.get('remote_ts', 'N/A')
                         if l_ts != 'N/A': local_ts.append(l_ts)
@@ -539,7 +563,8 @@ def fetch_config():
                 
                 processed_vpn_data.append({
                     'peer': peer_ip,
-                    'status': combined_status,
+                    'status': p1_state, # Phase 1 status
+                    'tunnels': tunnels, # List of tunnels
                     'local_ts': local_ts,
                     'remote_ts': remote_ts
                 })

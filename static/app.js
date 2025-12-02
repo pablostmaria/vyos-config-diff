@@ -99,6 +99,7 @@ function renderIPsecSA(data) {
                 <th>Peer</th>
                 ${isVTI ? '<th>Interfaz VTI</th>' : ''}
                 <th>Estado</th>
+                ${!isVTI ? '<th>Túneles</th>' : ''}
                 <th>${isVTI ? 'Red Local' : 'Redes Locales'}</th>
                 <th>${isVTI ? 'Redes Enrutadas' : 'Redes Remotas'}</th>
               </tr>
@@ -114,6 +115,7 @@ function renderIPsecSA(data) {
 
       let localNets = '';
       let remoteNets = '';
+      let tunnelsHtml = '';
 
       if (isVTI) {
         // VTI Mode: local_lans and routed_nets are arrays
@@ -123,6 +125,16 @@ function renderIPsecSA(data) {
         // Policy Mode: local_ts and remote_ts are arrays
         localNets = Array.isArray(row.local_ts) ? row.local_ts.join('<br>') : row.local_ts;
         remoteNets = Array.isArray(row.remote_ts) ? row.remote_ts.join('<br>') : row.remote_ts;
+
+        // Render tunnels list
+        if (row.tunnels && Array.isArray(row.tunnels)) {
+          tunnelsHtml = row.tunnels.map(t => {
+            const tIcon = t.status === 'up'
+              ? '<span style="display: inline-block; width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; margin-left: 5px;"></span>'
+              : '<span style="display: inline-block; width: 10px; height: 10px; background-color: #ef4444; border-radius: 50%; margin-left: 5px;"></span>';
+            return `<div>${t.name} ${tIcon}</div>`;
+          }).join('');
+        }
       }
 
       html += `
@@ -130,6 +142,7 @@ function renderIPsecSA(data) {
           <td>${row.peer}</td>
           ${isVTI ? `<td>${row.vti_iface || 'N/A'}</td>` : ''}
           <td>${statusIcon}</td>
+          ${!isVTI ? `<td>${tunnelsHtml || 'N/A'}</td>` : ''}
           <td>${localNets || 'N/A'}</td>
           <td>${remoteNets || 'N/A'}</td>
         </tr>
