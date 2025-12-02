@@ -160,22 +160,53 @@ def get_ipsec_mode(ssh):
         print(f"DEBUG VTI: stdout='{stdout_data[:200]}'")
         print(f"DEBUG VTI: stderr='{stderr_data[:200]}'")
         
-        # Look for interface names like vti0, vti1, etc.
-        if re.search(r'vti\d+', stdout_data, re.IGNORECASE):
-            print("DEBUG VTI: Found VTI interface")
-            return "Enrutado (VTI)"
+        # Look for interface names like vti0, vti1, etc. AND check if they are UP (u/u)
+        # Output format example:
+        # Interface        IP Address                        S/L  Description
+        # ---------        ----------                        ---  -----------
+        # vti0             -                                 u/u  
+        # vti1             10.0.0.1/30                       A/D
         
-        # Alternative: Check configuration
-        cmd2 = "/usr/bin/vbash -ic 'show configuration commands | grep \"set interfaces vti\"'"
-        stdin, stdout, stderr = ssh.exec_command(cmd2)
-        config_data = stdout.read().decode('utf-8', errors='ignore')
-        print(f"DEBUG VTI Config: '{config_data[:200]}'")
+        lines = stdout_data.splitlines()
+        vti_active = False
         
-        if "set interfaces vti" in config_data:
-            print("DEBUG VTI: Found VTI in configuration")
-            return "Enrutado (VTI)"
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 3:
+                iface = parts[0]
+                # Check if it's a vti interface
+                if iface.startswith('vti'):
+                    # Check status column (usually 3rd column, index 2)
+                    # But sometimes IP is missing, so columns shift?
+                    # Let's look for u/u pattern in the line
+                    if 'u/u' in line:
+                        vti_active = True
+                        print(f"DEBUG VTI: Found active VTI interface: {iface}")
+                        break
         
-        print("DEBUG VTI: No VTI found, returning Políticas")
+        if vti_active:
+             return "Enrutado (VTI)"
+        
+        # If we found VTI interfaces but none are u/u, we might want to check config
+        # But user requested that if it's down, treat as Policy.
+        # So we skip the config check if we successfully parsed the interface command.
+        
+        # Only check config if the interface command failed or returned nothing useful (e.g. empty)
+        if not stdout_data.strip():
+             # Alternative: Check configuration
+            cmd2 = "/usr/bin/vbash -ic 'show configuration commands | grep \"set interfaces vti\"'"
+            stdin, stdout, stderr = ssh.exec_command(cmd2)
+            config_data = stdout.read().decode('utf-8', errors='ignore')
+            print(f"DEBUG VTI Config: '{config_data[:200]}'")
+            
+            if "set interfaces vti" in config_data:
+                # If configured but we couldn't determine status, maybe default to VTI? 
+                # Or Policy? User said "if down -> policy".
+                # If we are here, it means 'show interfaces vti' returned empty, so maybe no VTI exists?
+                print("DEBUG VTI: Found VTI in configuration but show interfaces failed/empty")
+                return "Enrutado (VTI)" # Fallback if command fails but config exists?
+        
+        print("DEBUG VTI: No active VTI found, returning Políticas")
         return "Políticas"
         
     except Exception as e:
